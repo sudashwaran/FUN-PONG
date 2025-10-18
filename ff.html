@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Retro Pong Mobile ⚡</title>
+<style>
+html,body{margin:0;padding:0;height:100%;overflow:hidden;
+background:radial-gradient(circle at top,#111 0%,#000 100%);
+color:#0ff;font-family:'Orbitron',sans-serif;text-align:center;}
+canvas{display:block;margin:0 auto;border:2px solid #0ff;border-radius:10px;
+background:#000;width:100vw;height:100vh;touch-action:none;}
+#controls{position:absolute;top:10px;width:100%;text-align:center;z-index:10;}
+button,select{margin:4px;padding:8px 12px;background:linear-gradient(90deg,#0ff,#f0f);
+border:none;border-radius:8px;font-weight:bold;cursor:pointer;color:#000;transition:transform .2s;}
+button:hover{transform:scale(1.1);}
+h2{text-shadow:0 0 10px #0ff,0 0 20px #f0f;}
+#keyInfo{position:absolute;bottom:15px;left:50%;transform:translateX(-50%);
+background:rgba(0,0,0,0.6);border:2px solid #0ff;border-radius:12px;
+padding:10px 20px;color:#fff;font-size:14px;}
+@media(max-width:600px){#controls button,#controls select{padding:10px 16px;font-size:18px;}
+#keyInfo{font-size:15px;}}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="controls">
+  <h2>🕹️ Fun Pong Mobile&Pc ⚡</h2>
+  <button id="mode2">2 Player</button>
+  <button id="mode4">4 Player (2v2)</button>
+  <button id="modeAI">vs AI</button>
+  <label for="level">Level:</label>
+  <select id="level">
+    <option value="1">Kids</option>
+    <option value="2">Boys</option>
+    <option value="3">Men</option>
+    <option value="4">Sigma</option>
+    <option value="5">God</option>
+  </select>
+  <label for="powers">Powers:</label>
+  <select id="powers">
+    <option value="on" selected>ON</option>
+    <option value="off">OFF</option>
+  </select>
+  <button id="start">Start</button>
+  <button id="restart">Restart</button>
+</div>
+
+<div id="keyInfo">
+🟩 P1: ↑ ↓ 🟦 P2: W / S 🟨 P3: I / K 🟪 P4: T / G<br>
+📱 Touch left/right sides to move paddles on mobile
+</div>
+
+<canvas id="pong"></canvas>
+
+<script>
+const canvas=document.getElementById('pong');
+const ctx=canvas.getContext('2d');
+function resize(){canvas.width=window.innerWidth;canvas.height=window.innerHeight;}
+window.addEventListener('resize',resize);resize();
+
+let mode='AI',level=1,gameStarted=false,powersOn=true;
+let paddles=[],balls=[],powerUps=[];
+let score={teamA:0,teamB:0};
+let cooldownActive=false;
+
+document.getElementById('mode2').onclick=()=>{if(!gameStarted){mode='2P';setup();}};
+document.getElementById('mode4').onclick=()=>{if(!gameStarted){mode='4P';setup();}};
+document.getElementById('modeAI').onclick=()=>{if(!gameStarted){mode='AI';setup();}};
+document.getElementById('level').onchange=e=>level=parseInt(e.target.value);
+document.getElementById('powers').onchange=e=>powersOn=e.target.value==='on';
+document.getElementById('start').onclick=()=>{if(!gameStarted){launchBall();gameStarted=true;}};
+document.getElementById('restart').onclick=()=>{score.teamA=score.teamB=0;gameStarted=false;setup();};
+
+function setup(){
+  paddles=[];
+  const baseH=100;
+  if(mode==='2P'){
+    paddles=[
+      {x:50,y:canvas.height/2-baseH/2,w:15,h:baseH,color:'#0ff',team:'A'},
+      {x:canvas.width-65,y:canvas.height/2-baseH/2,w:15,h:baseH,color:'#f0f',team:'B'}
+    ];
+  }else if(mode==='4P'){
+    paddles=[
+      {x:50,y:canvas.height/3-baseH/2,w:15,h:baseH,color:'#0ff',team:'A',zone:'top'},
+      {x:50,y:(canvas.height/3)*2-baseH/2,w:15,h:baseH,color:'#0ff',team:'A',zone:'bottom'},
+      {x:canvas.width-65,y:canvas.height/3-baseH/2,w:15,h:baseH,color:'#f0f',team:'B',zone:'top'},
+      {x:canvas.width-65,y:(canvas.height/3)*2-baseH/2,w:15,h:baseH,color:'#f0f',team:'B',zone:'bottom'}
+    ];
+  }else{
+    paddles=[
+      {x:50,y:canvas.height/2-baseH/2,w:15,h:baseH,color:'#0ff',team:'A'},
+      {x:canvas.width-65,y:canvas.height/2-baseH/2,w:15,h:baseH,color:'#f0f',team:'B',ai:true}
+    ];
+  }
+  balls=[{x:canvas.width/2,y:canvas.height/2,r:10,vx:0,vy:0,color:'#fff'}];
+  powerUps=[];
+}
+function launchBall(){
+  balls.forEach(b=>{
+    const sp=5+level;
+    const ang=(Math.random()*Math.PI/4-Math.PI/8);
+    const dirX=Math.random()>0.5?1:-1;
+    const dirY=Math.random()>0.5?1:-1;
+    b.vx=sp*Math.cos(ang)*dirX;
+    b.vy=sp*Math.sin(ang)*dirY;
+  });
+}
+const keys={};
+window.addEventListener('keydown',e=>keys[e.key]=true);
+window.addEventListener('keyup',e=>keys[e.key]=false);
+
+function movePaddles(){
+  const speed=10;
+  paddles.forEach((p,i)=>{
+    if(p.ai){
+      const target=balls[0].y-p.h/2;
+      const aiSpeed=2+level*1.5;
+      p.y+=Math.sign(target-p.y)*aiSpeed;
+    }else{
+      if(i===0){if(keys['ArrowUp'])p.y-=speed;if(keys['ArrowDown'])p.y+=speed;}
+      if(i===1&&!p.ai){if(keys['w']||keys['W'])p.y-=speed;if(keys['s']||keys['S'])p.y+=speed;}
+      if(i===2){if(keys['i']||keys['I'])p.y-=speed;if(keys['k']||keys['K'])p.y+=speed;}
+      if(i===3){if(keys['t']||keys['T'])p.y-=speed;if(keys['g']||keys['G'])p.y+=speed;}
+    }
+    p.y=Math.max(0,Math.min(canvas.height-p.h,p.y));
+  });
+}
+
+// 📱 TOUCH CONTROL
+let touches={};
+canvas.addEventListener('touchstart',e=>handleTouch(e));
+canvas.addEventListener('touchmove',e=>handleTouch(e));
+canvas.addEventListener('touchend',e=>touches={});
+
+function handleTouch(e){
+  e.preventDefault();
+  touches={};
+  for(const t of e.touches){
+    const x=t.clientX, y=t.clientY;
+    touches[t.identifier]={x,y};
+  }
+  // interpret touches
+  for(const id in touches){
+    const t=touches[id];
+    if(mode==='2P'||mode==='AI'){
+      if(t.x<canvas.width/2){
+        // left player
+        const p=paddles[0];
+        p.y=t.y-p.h/2;
+      }else{
+        const p=paddles[paddles.length-1];
+        if(!p.ai)p.y=t.y-p.h/2;
+      }
+    }else if(mode==='4P'){
+      if(t.x<canvas.width/2){
+        // Team A
+        const p=(t.y<canvas.height/2)?paddles[0]:paddles[1];
+        p.y=t.y-p.h/2;
+      }else{
+        // Team B
+        const p=(t.y<canvas.height/2)?paddles[2]:paddles[3];
+        p.y=t.y-p.h/2;
+      }
+    }
+  }
+}
+
+function spawnPowerUp(){
+  if(!powersOn||cooldownActive)return;
+  cooldownActive=true;
+  const types=['speed','slow','big','multi'];
+  const type=types[Math.floor(Math.random()*types.length)];
+  const x=Math.random()*(canvas.width-80)+40;
+  const y=Math.random()*(canvas.height-80)+40;
+  const color={speed:'#0f0',slow:'#0ff',big:'#ff0',multi:'#f0f'}[type];
+  powerUps.push({x,y,r:20,type,color,t:Date.now()});
+  setTimeout(()=>cooldownActive=false,7000);
+}
+let nextSpawn=Date.now()+4000;
+
+// 🧠 Apply power with 5s duration
+function applyTeamPower(team,type){
+  if(!powersOn)return;
+  const teamPads=paddles.filter(p=>p.team===team);
+  switch(type){
+    case'speed':
+      balls.forEach(b=>{b.vx*=1.5;b.vy*=1.5;});
+      setTimeout(()=>balls.forEach(b=>{b.vx/=1.5;b.vy/=1.5;}),5000);
+      break;
+    case'slow':
+      balls.forEach(b=>{b.vx*=0.6;b.vy*=0.6;});
+      setTimeout(()=>balls.forEach(b=>{b.vx/=0.6;b.vy/=0.6;}),5000);
+      break;
+    case'big':
+      teamPads.forEach(p=>{p.h*=1.5;setTimeout(()=>p.h/=1.5,5000);});
+      break;
+    case'multi':
+      const newBalls=[];
+      balls.forEach(b=>{newBalls.push({x:b.x,y:b.y,r:10,vx:-b.vx,vy:b.vy,color:'#fff'});});
+      balls.push(...newBalls);
+      setTimeout(()=>{balls.splice(1);},5000);
+      break;
+  }
+}
+
+function circleRectCollide(cx,cy,cr,rx,ry,rw,rh){
+  const testX=Math.max(rx,Math.min(cx,rx+rw));
+  const testY=Math.max(ry,Math.min(cy,ry+rh));
+  const dist=Math.hypot(cx-testX,cy-testY);
+  return dist<=cr;
+}
+
+function update(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  movePaddles();
+  paddles.forEach(p=>{ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,p.w,p.h);});
+  powerUps=powerUps.filter(pu=>Date.now()-pu.t<10000);
+  powerUps.forEach(pu=>{ctx.beginPath();ctx.arc(pu.x,pu.y,pu.r,0,Math.PI*2);
+    ctx.fillStyle=pu.color;ctx.fill();});
+  balls.forEach(b=>{
+    ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
+    ctx.fillStyle=b.color;ctx.fill();
+    if(gameStarted){b.x+=b.vx;b.y+=b.vy;}
+    if(b.y<b.r||b.y>canvas.height-b.r)b.vy*=-1;
+    paddles.forEach(p=>{
+      if(b.x>p.x&&b.x<p.x+p.w&&b.y>p.y&&b.y<p.y+p.h){b.vx*=-1;}
+      for(let j=0;j<powerUps.length;j++){
+        const pu=powerUps[j];
+        if(!pu)continue;
+        const ballHit=Math.hypot(b.x-pu.x,b.y-pu.y)<b.r+pu.r;
+        const paddleHit=circleRectCollide(pu.x,pu.y,pu.r,p.x,p.y,p.w,p.h);
+        if(ballHit||paddleHit){applyTeamPower(p.team,pu.type);pu.t=0;}
+      }
+    });
+    if(b.x<0){score.teamB++;setup();}
+    if(b.x>canvas.width){score.teamA++;setup();}
+  });
+  ctx.font='30px Orbitron';ctx.fillStyle='#0ff';
+  ctx.fillText('Team A: '+score.teamA,canvas.width/4,50);
+  ctx.fillStyle='#f0f';
+  ctx.fillText('Team B: '+score.teamB,(canvas.width/4)*3,50);
+  if(powersOn&&Date.now()>nextSpawn){spawnPowerUp();nextSpawn=Date.now()+7000;}
+  requestAnimationFrame(update);
+}
+setup();update();
+</script>
+</body>
+</html>
